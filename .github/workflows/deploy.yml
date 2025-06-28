@@ -1,0 +1,59 @@
+name: Build, Push, and Deploy to GCP Cloud Run
+on:
+  push:
+    branches: [main]
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout Repository
+      uses: actions/checkout@v3
+    - name: Authenticate to GCP
+      uses: google-github-actions/auth@v1
+      with:
+        credentials_json: ${{ secrets.GCP_CREDENTIALS }}
+    - name: Set up Google Cloud SDK
+      uses: google-github-actions/setup-gcloud@v1
+      with:
+        project_id: solana-spl-trader
+    - name: Configure Docker for Artifact Registry
+      run: gcloud auth configure-docker us-east1-docker.pkg.dev
+    - name: Build Docker Image
+      run: |
+        docker build -f Dockerfile -t us-east1-docker.pkg.dev/solana-spl-trader/spl-trader/spl-drawdown:latest .
+    - name: Push Docker Image to Artifact Registry
+      run: |
+        docker push us-east1-docker.pkg.dev/solana-spl-trader/spl-trader/spl-drawdown:latest
+    - name: Deploy Seller to Cloud Run
+      run: |
+        gcloud run deploy drawdown-seller-service \
+          --image us-east1-docker.pkg.dev/solana-spl-trader/spl-trader/spl-drawdown:latest \
+          --platform managed \
+          --region us-east1 \
+          --allow-unauthenticated \
+          --min-instances 1 \
+          --max-instances 1 \
+          --set-env-vars HELIUS_API_KEY=${{ secrets.HELIUS_API_KEY }} \
+          --set-env-vars BIRDEYE_API_TOKEN=${{ secrets.BIRDEYE_API_TOKEN }} \
+          --set-env-vars SOLANA_PRIVATE_KEY=${{ secrets.SOLANA_PRIVATE_KEY }} \
+          --set-env-vars BET_AMOUNT_SOL=1.0 \
+          --set-env-vars MIN_24HR_VOLUME=500000.0 \
+          --set-env-vars MODE=SELLER
+    - name: Deploy Buyer to Cloud Run
+      run: |
+        gcloud run deploy drawdown-buyer-service \
+          --image us-east1-docker.pkg.dev/solana-spl-trader/spl-trader/spl-drawdown:latest \
+          --platform managed \
+          --region us-east1 \
+          --allow-unauthenticated \
+          --min-instances 1 \
+          --max-instances 1 \
+          --cpu 2 \
+          --memory 2Gi \
+          --execution-environment gen2 \
+          --set-env-vars HELIUS_API_KEY=${{ secrets.HELIUS_API_KEY }} \
+          --set-env-vars BIRDEYE_API_TOKEN=${{ secrets.BIRDEYE_API_TOKEN }} \
+          --set-env-vars SOLANA_PRIVATE_KEY=${{ secrets.SOLANA_PRIVATE_KEY }} \
+          --set-env-vars BET_AMOUNT_SOL=1.0 \
+          --set-env-vars MIN_24HR_VOLUME=500000.0 \
+          --set-env-vars MODE=BUYER

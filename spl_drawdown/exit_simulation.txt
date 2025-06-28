@@ -1,0 +1,104 @@
+import time
+from typing import List
+
+from spl_drawdown.utils.log import get_logger
+from spl_drawdown.utils.settings import settings_key_values
+import json
+logger = get_logger()  # Get the logger instance
+
+
+class ExitSimul:
+    def __init__(self):
+        self.exit_strategy = [
+            {
+                "amount_remaining_percent_gt": 0.51,
+                "amount_remaining_percent_lte": 1.0,
+                "stop_price_per_token_percent_change": -0.2,
+                "profit_price_per_token_percent_change": 0.5,
+                "profit_sell_amount_percent": 0.5,
+            },
+            {
+                "amount_remaining_percent_gt": 0.35,
+                "amount_remaining_percent_lte": 0.51,
+                "stop_price_per_token_percent_change": -0.2,
+                "profit_price_per_token_percent_change": 1.0,
+                "profit_sell_amount_percent": 0.25,
+            },
+            {
+                "amount_remaining_percent_gt": 0.0,
+                "amount_remaining_percent_lte": 0.35,
+                "stop_price_per_token_percent_change": 0.5,
+                "profit_price_per_token_percent_change": 2.0,
+                "profit_sell_amount_percent": 0.25,
+            },
+            # {
+            #     "amount_remaining_percent_gt": 0.0,
+            #     "amount_remaining_percent_lte": 0.25,
+            #     "stop_price_per_token_percent_change": 0.4,
+            #     "profit_price_per_token_percent_change": 2.0,
+            #     "profit_sell_amount_percent": 0.15,
+            # },
+            # {
+            #     "amount_remaining_percent_gt": 0.0,
+            #     "amount_remaining_percent_lte": 0.15,
+            #     "stop_price_per_token_percent_change": 0.6,
+            #     "profit_price_per_token_percent_change": 2.0,
+            #     "profit_sell_amount_percent": 0.10,
+            # },
+        ]
+        print(json.dumps(self.exit_strategy))
+
+    def run(self):
+        price_action = self.get_price_action()
+        initial_token_amount = 100
+        initial_price = 100
+        total_spent = initial_token_amount * initial_price
+        amount_remaining_percent = 1.0
+        total_sold = 0
+        for price in price_action:
+            if amount_remaining_percent == 0:
+                break
+
+            print("price: {a}".format(a=price))
+            print("amount remaining: {a}".format(a=amount_remaining_percent))
+            strat = self.get_exit_strategy(amount_remaining_percent=amount_remaining_percent)
+            print(strat)
+            stop_tokens_to_sell = amount_remaining_percent * initial_token_amount
+            profit_tokens_to_sell = initial_token_amount * strat["profit_sell_amount_percent"]
+            stop_sell_price = (1 + strat["stop_price_per_token_percent_change"]) * initial_price
+            profit_sell_price = (1 + strat["profit_price_per_token_percent_change"]) * initial_price
+            print("Stop tokens to sell: {a} Stop Sell Price: {p}".format(a=stop_tokens_to_sell, p=stop_sell_price))
+            print("Profit tokens to sell: {a} Profit Sell Price: {p}".format(a=profit_tokens_to_sell, p=profit_sell_price))
+            if price <= stop_sell_price:
+                print("Stop Sell")
+                total_sold += stop_tokens_to_sell * stop_sell_price
+                amount_remaining_percent = (
+                    (amount_remaining_percent * initial_token_amount) - stop_tokens_to_sell
+                ) / initial_token_amount
+            elif price >= profit_sell_price:
+                print("Take profit")
+                total_sold += profit_tokens_to_sell * profit_sell_price
+                amount_remaining_percent = (
+                    (amount_remaining_percent * initial_token_amount) - profit_tokens_to_sell
+                ) / initial_token_amount
+            print(amount_remaining_percent, total_sold, (total_sold-total_spent)/total_spent)
+            print('--------')
+
+    def get_price_action(self) -> list:
+        price_action = [100, 110, 120, 130, 140, 150, 165, 180, 200, 80, 400]
+        # price_action = [125, 79]
+        return price_action
+
+    def get_exit_strategy(self, amount_remaining_percent: float) -> dict:
+        for strat in self.exit_strategy:
+            if (
+                strat["amount_remaining_percent_lte"]
+                >= amount_remaining_percent
+                > strat["amount_remaining_percent_gt"]
+            ):
+                return strat
+
+
+if __name__ == "__main__":
+    Es = ExitSimul()
+    Es.run()

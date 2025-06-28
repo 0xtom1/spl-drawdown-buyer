@@ -1,0 +1,11 @@
+more-itertools
+numpy
+pandas
+python-dotenv
+gql[all]
+heliuspy
+solana
+solders
+requests
+tenacity
+base58
