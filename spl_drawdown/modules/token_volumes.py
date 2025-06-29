@@ -323,13 +323,21 @@ if __name__ == "__main__":
 
     api_key = os.environ.get("BIRDEYE_API_TOKEN")
     a = TokenVolumes(BIRDEYE_API_TOKEN=api_key)
-    tokens = a.get_tokens()
+    # tokens = a.get_tokens()
 
-    for x in tokens:
-        logger.info(x)
+    # for x in tokens:
+    #     logger.info(x)
     # a.get_tokens()
-    # tt, t = a.verify_market(
-    #     token=TokenData(name="", symbol="", mint_address="ELM5N5hb3RVrHsDYgseNdxKaiaML13sasAa8ggYjpump")
-    # )
-    # print(tt)
-    # print(t)
+    t = a.verify_ownership(
+         token=TokenData(name="", symbol="", mint_address="DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263")
+     )
+    print(t)
+    t = a.verify_security(
+         token=TokenData(name="", symbol="", mint_address="DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263")
+     )
+    print(t)
+    tt, t = a.verify_market(
+         token=TokenData(name="", symbol="", mint_address="DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263")
+     )
+    print(tt)
+    print(t)

@@ -57,7 +57,7 @@ class TokenCharts:
 
         self.set_token_list(token_list=filtered_list)
 
-    def populate_candle_data(self, candle_days: int = 1) -> List[TokenData]:
+    def populate_candle_data(self, candle_days: int = 365) -> List[TokenData]:
         """_summary_
 
             NOTE: Timestamp for candle is the beginning of the time period
