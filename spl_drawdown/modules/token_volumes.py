@@ -86,11 +86,18 @@ class TokenVolumes:
         self.last_run_date = datetime.now(timezone.utc)
         filtered_list = list()
         logger.info("Tokens with volume: {t}".format(t=len(results)))
+        i = 0
         for token in results:
-            logger.info("Checking {t}: {s} {a}".format(t=token.symbol, s=token.name, a=token.mint_address))
+            i += 1
+            if i % 100 == 0:
+                logger.info("{a} of {b}".format(a=i, b=len(results)))
             if not self.verify_ownership(token=token):
                 continue
-
+            logger.info(
+                "{i} of {l} Checking {t}: {s} {a}".format(
+                    i=i, l=len(results), t=token.symbol, s=token.name, a=token.mint_address
+                )
+            )
             if not self.verify_security(token=token):
                 continue
 
@@ -146,14 +153,12 @@ class TokenVolumes:
             "TSLvdd1pWpHVjahSpsvCXUbgwsL3JAcvokwaKt1eokM",
             "WLHv2UAZm6z4KyaaELi5pjdbJh6RESMva1Rnn8pJVVh",
         ):
-            logger.error("Owner wrong value")
             return False
 
         creation_unix_time = response_json["data"].get("blockUnixTime")
         create_date = datetime.fromtimestamp(creation_unix_time, tz=timezone.utc)
         max_age = datetime.now(timezone.utc) - timedelta(days=14)
         if create_date > max_age:
-            logger.error("Creation date not old enough")
             return False
         token.create_date = create_date
 
@@ -299,7 +304,11 @@ class TokenVolumes:
         is_different_day = self.last_run_date.date() != current_utc.date()
         is_minute_greater_than_10 = current_utc.minute > 10
 
-        if threshold >= self.last_run_date or (is_different_day and is_minute_greater_than_10):
+        if threshold >= self.last_run_date:
+            logger.info("Last Run date more than 24 hr ago: {d}".format(d=self.last_run_date))
+            return True
+        if is_different_day and is_minute_greater_than_10:
+            logger.info("Different day: {d}".format(d=self.last_run_date))
             return True
 
         return False
