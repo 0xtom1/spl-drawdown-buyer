@@ -1,5 +1,6 @@
 import json
 from datetime import datetime, timedelta, timezone
+from statistics import mean, stdev
 from time import sleep
 from typing import List
 
@@ -56,7 +57,7 @@ class TokenCharts:
 
         self.set_token_list(token_list=filtered_list)
 
-    def populate_candle_data(self, candle_days: int = 365) -> List[TokenData]:
+    def populate_candle_data(self, candle_days: int = 1) -> List[TokenData]:
         """_summary_
 
             NOTE: Timestamp for candle is the beginning of the time period
@@ -64,13 +65,27 @@ class TokenCharts:
             token (TokenData): _description_
             filter_days (int, optional): _description_. Defaults to 14.
         """
-        current_time = datetime.now(timezone.utc).replace(minute=0, second=0, microsecond=0)
-        utc_from = current_time - timedelta(days=candle_days)
-
+        current_time = datetime.now(timezone.utc).replace(second=0, microsecond=0, minute=0)
+        i = 0
         for token in self.token_list:
+            i += 1
+            logger.info(
+                "{a} of {b}: {x} {y}".format(a=i, b=len(self.token_list), x=token.symbol, y=token.mint_address)
+            )
+            utc_from = max(
+                current_time - timedelta(days=candle_days),
+                token.create_date.replace(minute=0, second=0, microsecond=0),
+            )
+            logger.info("Create date: {t}".format(t=token.create_date))
+            logger.info("Start date: {t}".format(t=utc_from))
+            logger.info("End date: {t}".format(t=current_time))
             candle_data_hourly = self.get_candle_data(
                 mint_address=token.mint_address, start_date=utc_from, end_date=current_time
             )
+
+            if not self.verify_volume_authenticity(hourly_candles=candle_data_hourly[-24:]):
+                logger.info("Volume volatility not met for {x} {y}".format(x=token.symbol, y=token.mint_address))
+                continue
 
             distinct_days = sorted({dt.time.date() for dt in candle_data_hourly})
 
@@ -104,6 +119,7 @@ class TokenCharts:
                         volume=volume_sum,
                     )
                 )
+
             token.candle_data = calculated_results
 
     @staticmethod
@@ -134,7 +150,6 @@ class TokenCharts:
         Returns:
             List[CandleData]: _description_
         """
-        end_date_unix = int(end_date.timestamp())
 
         temp_end_time = start_date
         results = []
@@ -172,8 +187,6 @@ class TokenCharts:
             for each in response_json["data"]["items"]:
                 dt = datetime.fromtimestamp(each["unix_time"])
                 date_string = dt.strftime("%Y-%m-%d %H:%M:%S")
-                if each["unix_time"] == end_date_unix:
-                    continue
                 if date_string not in [x.time_str for x in results]:
                     results.append(
                         CandleData(
@@ -205,6 +218,28 @@ class TokenCharts:
 
         token.ath_price_time = ath_price_time
         token.ath_price_usd = ath_price_usd
+
+    def verify_volume_authenticity(self, hourly_candles: List[CandleData] = None) -> bool:
+        """Verify volume data looks authentic
+
+        Args:
+            hourly_candles (List[CandleData]):
+
+        Returns:
+            List[TokenData]: _description_
+        """
+        volumes = [x.volume for x in hourly_candles][:-1]
+        co_eff = self.coefficient_of_variation(numbers=volumes)
+        logger.info("Volume coefficiency of variation: {f}".format(f=round(co_eff, 6)))
+        if co_eff < 0.4:
+            return False
+        return True
+
+    @staticmethod
+    def coefficient_of_variation(numbers):
+        if not numbers or mean(numbers) == 0:
+            return 0  # Handle empty lists or zero mean
+        return stdev(numbers) / mean(numbers)
 
     def populate_drawdown_metrics(self, token: TokenData):
         """_summary_
@@ -380,7 +415,6 @@ class TokenCharts:
     def _print_data(self):
         for each in self.token_list:
             logger.info(each)
-
         logger.info("Token Count: {f}".format(f=len(self.token_list)))
 
 
@@ -393,12 +427,14 @@ if __name__ == "__main__":
     BIRDEYE_API_TOKEN = os.environ.get("BIRDEYE_API_TOKEN")
 
     S = TokenCharts(BIRDEYE_API_TOKEN=BIRDEYE_API_TOKEN)
-    token_list = [
-        TokenData(name="GRIFFIN", symbol="GRIFFIN", mint_address="KENJSUYLASHUMfHyy5o4Hp2FdNqZg1AsUPhfH2kYvEP")
-    ]
-    S.set_token_list(token_list=token_list)
-    S.populate_token_list()
-    S._print_data()
+    S.verify_volume_authenticity()
+
+    # token_list = [
+    #     TokenData(name="GRIFFIN", symbol="GRIFFIN", mint_address="KENJSUYLASHUMfHyy5o4Hp2FdNqZg1AsUPhfH2kYvEP")
+    # ]
+    # S.set_token_list(token_list=token_list)
+    # S.populate_token_list()
+    # S._print_data()
     # prices = S.get_quotes(
     #     mints=["Dz9mQ9NzkBcCsuGPFJ3r1bS4wgqKMHBPiVuniW8Mbonk", "DtR4D9FtVoTX2569gaL837ZgrB6wNjj6tkmnX9Rdk9B2"]
     # )

@@ -31,7 +31,7 @@ class TokenVolumes:
         self.ignore_tokens_dict = {token: True for token in ignore_tokens_seed}
         self.last_run_date = None
 
-    def get_tokens(self, min_volume: int = 1000000) -> List[TokenData]:
+    def get_tokens(self, min_volume: int = 500000) -> List[TokenData]:
         """_summary_
 
         Args:
@@ -77,16 +77,19 @@ class TokenVolumes:
                         symbol=each["symbol"],
                         mint_address=each["address"],
                         dex="",
-                        volume_usd=round(each["volume_1h_usd"], 0),
-                        trades_count=each["trade_1h_count"],
+                        volume_usd=round(each["volume_24h_usd"], 0),
+                        trades_count=each["trade_24h_count"],
                         market="",
                     )
                 )
+
         self.last_run_date = datetime.now(timezone.utc)
         filtered_list = list()
         logger.info("Tokens with volume: {t}".format(t=len(results)))
         for token in results:
-            logger.info("Checking {t}: {s}".format(t=token.symbol, s=token.name))
+            logger.info("Checking {t}: {s} {a}".format(t=token.symbol, s=token.name, a=token.mint_address))
+            if not self.verify_ownership(token=token):
+                continue
 
             if not self.verify_security(token=token):
                 continue
@@ -101,6 +104,126 @@ class TokenVolumes:
         logger.info("Tokens returned: {t}".format(t=[x.symbol for x in filtered_list]))
 
         return filtered_list
+
+    @retry(
+        stop=stop_after_attempt(3),  # Retry 3 times
+        wait=wait_fixed(2),  # Wait 2 seconds between retries
+        retry=retry_if_exception_type((RequestException, HTTPError, SSLError)),  # Retry on RequestException
+        reraise=True,  # Reraise the last exception after retries
+    )
+    def verify_ownership(self, token: TokenData) -> bool:
+        """Verify basic details such as ownership and create date
+
+        ***this will not fail if no data is returned***
+
+        Args:
+            token (TokenData): _description_
+
+        Returns:
+            bool: _description_
+        """
+        params = {"address": token.mint_address}
+        url = "https://public-api.birdeye.so/defi/token_creation_info"
+
+        response = requests.get(url, headers=self.headers, params=params)
+        sleep(0.5)
+        # Check if the request was successful
+        if response.status_code != 200:
+            logger.error("Response failed : {e}".format(e=response.text))
+            return True
+
+        response_json = json.loads(response.text)
+
+        if "data" not in response_json:
+            logger.error("Response not valid : {e}".format(e=response_json))
+            return True
+
+        if response_json["data"] is None:
+            return True
+
+        owner = response_json["data"].get("owner")
+        if owner is None or owner not in (
+            "TSLvdd1pWpHVjahSpsvCXUbgwsL3JAcvokwaKt1eokM",
+            "WLHv2UAZm6z4KyaaELi5pjdbJh6RESMva1Rnn8pJVVh",
+        ):
+            logger.error("Owner wrong value")
+            return False
+
+        creation_unix_time = response_json["data"].get("blockUnixTime")
+        create_date = datetime.fromtimestamp(creation_unix_time, tz=timezone.utc)
+        max_age = datetime.now(timezone.utc) - timedelta(days=14)
+        if create_date > max_age:
+            logger.error("Creation date not old enough")
+            return False
+        token.create_date = create_date
+
+        return True
+
+    @retry(
+        stop=stop_after_attempt(3),  # Retry 3 times
+        wait=wait_fixed(2),  # Wait 2 seconds between retries
+        retry=retry_if_exception_type((RequestException, HTTPError, SSLError)),  # Retry on RequestException
+        reraise=True,  # Reraise the last exception after retries
+    )
+    def verify_security(self, token: TokenData) -> bool:
+        """_summary_redeploy
+
+        Args:
+            token (TokenData): _description_
+
+        Returns:
+            bool: _description_
+        """
+        params = {"address": token.mint_address}
+        url = "https://public-api.birdeye.so/defi/token_security"
+
+        response = requests.get(url, headers=self.headers, params=params)
+        sleep(0.5)
+        # Check if the request was successful
+        if response.status_code != 200:
+            logger.error("Response failed : {e}".format(e=response.text))
+            return False
+
+        response_json = json.loads(response.text)
+
+        if "data" not in response_json:
+            logger.error("Response not valid : {e}".format(e=response_json))
+            return False
+
+        update_authority = response_json["data"].get("metaplexUpdateAuthority")
+        if update_authority is None or update_authority not in (
+            "TSLvdd1pWpHVjahSpsvCXUbgwsL3JAcvokwaKt1eokM",
+            "WLHv2UAZm6z4KyaaELi5pjdbJh6RESMva1Rnn8pJVVh",
+        ):
+            logger.error("Update authority wrong value")
+            return False
+
+        creation_time = response_json["data"].get("creationTime")
+        if creation_time:
+            max_age = datetime.now(timezone.utc) - timedelta(days=14)
+            dt = datetime.fromtimestamp(creation_time, tz=timezone.utc)
+            if not token.create_date:
+                token.create_date = dt
+            if dt > max_age:
+                logger.error("Creation date not old enough")
+                return False
+        elif token.create_date is None:
+            logger.error("No creation date found")
+            return False
+
+        freezeable = response_json["data"].get("freezeable")
+        if freezeable:
+            logger.error("Freezable")
+            return False
+
+        top10_per = response_json["data"].get("top10HolderPercent")
+        if top10_per:
+            logger.info("top10 per = {x}".format(x=top10_per))
+        if top10_per and top10_per > 0.5:
+            logger.error("top10_per > 0.5")
+            return False
+        logger.info("Passed security")
+        return True
 
     def verify_market(self, token: TokenData, min_liquidity: int = 100000) -> Tuple[TokenData, bool]:
         """_summary_
@@ -160,73 +283,6 @@ class TokenVolumes:
 
         return token, False
 
-    @retry(
-        stop=stop_after_attempt(3),  # Retry 3 times
-        wait=wait_fixed(2),  # Wait 2 seconds between retries
-        retry=retry_if_exception_type((RequestException, HTTPError, SSLError)),  # Retry on RequestException
-        reraise=True,  # Reraise the last exception after retries
-    )
-    def verify_security(self, token: TokenData) -> bool:
-        """_summary_redeploy
-
-        Args:
-            token (TokenData): _description_
-
-        Returns:
-            bool: _description_
-        """
-        logger.info("Checking security for {x}: {a}".format(x=token.symbol, a=token.mint_address))
-        params = {"address": token.mint_address}
-        url = "https://public-api.birdeye.so/defi/token_security"
-
-        response = requests.get(url, headers=self.headers, params=params)
-
-        # Check if the request was successful
-        if response.status_code != 200:
-            logger.error("Response failed : {e}".format(e=response.text))
-            return False
-
-        response_json = json.loads(response.text)
-
-        if "data" not in response_json:
-            logger.error("Response not valid : {e}".format(e=response_json))
-            return False
-
-        update_authority = response_json["data"].get("metaplexUpdateAuthority")
-        if update_authority is None or update_authority not in (
-            "TSLvdd1pWpHVjahSpsvCXUbgwsL3JAcvokwaKt1eokM",
-            "WLHv2UAZm6z4KyaaELi5pjdbJh6RESMva1Rnn8pJVVh",
-        ):
-            logger.error("Update authority wrong value")
-            return False
-
-        creation_time = response_json["data"].get("creationTime")
-        if creation_time:
-            max_age = datetime.now(timezone.utc) - timedelta(days=14)
-            dt = datetime.fromtimestamp(creation_time, tz=timezone.utc)
-            if dt > max_age:
-                logger.error("Creation date not old enough")
-                return False
-
-        freezeable = response_json["data"].get("freezeable")
-        if freezeable:
-            logger.error("Freezable")
-            return False
-
-        # metadata_mutable = response_json["data"].get("mutableMetadata")
-        # if metadata_mutable:
-        #     logger.error("mutableMetadata")
-        #     return False
-
-        top10_per = response_json["data"].get("top10HolderPercent")
-        if top10_per:
-            logger.info("top10 per = {x}".format(x=top10_per))
-        if top10_per and top10_per > 0.5:
-            logger.error("top10_per > 0.5")
-            return False
-        logger.info("Passed security")
-        return True
-
     def can_run(self, hours_between_runs: int = 24) -> bool:
         """Can get tokens procedure run
         or day of last run and current day are not the same and minute > 10
@@ -258,12 +314,13 @@ if __name__ == "__main__":
 
     api_key = os.environ.get("BIRDEYE_API_TOKEN")
     a = TokenVolumes(BIRDEYE_API_TOKEN=api_key)
+    tokens = a.get_tokens()
 
-    # for x in a:
-    #     logger.info(x)
+    for x in tokens:
+        logger.info(x)
     # a.get_tokens()
     # tt, t = a.verify_market(
-    #     token=TokenData(name="", symbol="", mint_address="5SVG3T9CNQsm2kEwzbRq6hASqh1oGfjqTtLXYUibpump")
+    #     token=TokenData(name="", symbol="", mint_address="ELM5N5hb3RVrHsDYgseNdxKaiaML13sasAa8ggYjpump")
     # )
     # print(tt)
     # print(t)

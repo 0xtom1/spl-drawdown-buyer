@@ -10,6 +10,7 @@ class TokenData:
     name: Optional[str] = None
     symbol: Optional[str] = None
     mint_address: Optional[str] = None
+    create_date: Optional[datetime] = None
     dex: Optional[str] = None
     volume_usd: Optional[float] = None
     trades_count: Optional[str] = None
@@ -39,6 +40,7 @@ class TokenData:
         current_price_time = (
             self.current_price_time.strftime("%Y-%m-%d %H:%M:%S") if self.current_price_time else "None"
         )
+        create_date = self.create_date.strftime("%Y-%m-%d %H:%M:%S") if self.create_date else "None"
 
         # Handle optional numeric fields with formatting
         ath_price_str = f"{self.ath_price_usd:.8f}" if self.ath_price_usd is not None else "None"
@@ -51,6 +53,7 @@ class TokenData:
         candle_count = len(self.candle_data)
 
         # Append each field to the parts list
+        parts.append(f"  create_date: {create_date}")
         parts.append(f"  volume_usd: {volume_usd_str}")
         parts.append(f"  trades_count: {self.trades_count or 'None'}")
         parts.append(f"  market: {self.market or 'None'}")
