@@ -87,47 +87,14 @@ class TokenCharts:
                 logger.info("Volume volatility not met for {x} {y}".format(x=token.symbol, y=token.mint_address))
                 continue
 
-            distinct_days = sorted({dt.time.date() for dt in candle_data_hourly})
-
-            calculated_results = list()
-            for day in distinct_days:
-                high_close = max([x.close for x in candle_data_hourly if x.time.date() == day])
-                high_open = max([x.open for x in candle_data_hourly if x.time.date() == day])
-                high = max(high_close, high_open)
-
-                low_close = min([x.close for x in candle_data_hourly if x.time.date() == day])
-                low_open = min([x.open for x in candle_data_hourly if x.time.date() == day])
-                low = min(low_close, low_open)
-
-                min_hourly_candle = min([x.time for x in candle_data_hourly if x.time.date() == day])
-                open_candle = self._get_candle(candle_list=candle_data_hourly, time=min_hourly_candle)
-
-                max_hourly_candle = max([x.time for x in candle_data_hourly if x.time.date() == day])
-                close_candle = self._get_candle(candle_list=candle_data_hourly, time=max_hourly_candle)
-
-                volume_sum = round(sum([x.volume for x in candle_data_hourly if x.time.date() == day]), 0)
-
-                calculated_results.append(
-                    CandleData(
-                        time=open_candle.time,
-                        time_str=open_candle.time_str,
-                        time_unix=open_candle.time_unix,
-                        open=open_candle.open,
-                        high=high,
-                        low=low,
-                        close=close_candle.close,
-                        volume=volume_sum,
-                    )
-                )
+            calculated_results = self.condense_candles_to_days(candles_to_condense=candle_data_hourly)
 
             token.candle_data = calculated_results
 
     @staticmethod
-    def _get_candle(candle_list: List[CandleData], time: datetime = None, time_unix: int = None) -> CandleData:
+    def _get_candle(candle_list: List[CandleData], time: datetime = None) -> CandleData:
         if time:
             value_list = [x for x in candle_list if x.time == time]
-        else:
-            value_list = [x for x in candle_list if x.time_unix == time_unix]
         if len(value_list) != 1:
             return None
 
@@ -171,7 +138,7 @@ class TokenCharts:
             url = "https://public-api.birdeye.so/defi/v3/ohlcv"
             response = requests.get(url, headers=self.headers, params=params)
             logger.info(f"Response Received. Params: {', '.join(f'{key}={value}' for key, value in params.items())}")
-            sleep(0.5)
+            sleep(0.2)
             # Check if the request was successful
             if response.status_code != 200:
                 logger.info("Response failed for {t}: {e}".format(t=mint_address, e=response.text))
@@ -186,23 +153,60 @@ class TokenCharts:
 
             for each in response_json["data"]["items"]:
                 dt = datetime.fromtimestamp(each["unix_time"])
-                date_string = dt.strftime("%Y-%m-%d %H:%M:%S")
-                if date_string not in [x.time_str for x in results]:
-                    results.append(
-                        CandleData(
-                            time=dt,
-                            time_str=date_string,
-                            time_unix=each["unix_time"],
-                            open=each["o"],
-                            high=each["h"],
-                            low=each["l"],
-                            close=each["c"],
-                            volume=each["v_usd"],
-                        )
+                results.append(
+                    CandleData(
+                        time=dt,
+                        open=each["o"],
+                        high=each["h"],
+                        low=each["l"],
+                        close=each["c"],
+                        volume=each["v_usd"],
                     )
+                )
             start_date = temp_end_time + timedelta(hours=1)
 
         return results
+
+    def condense_candles_to_days(self, candles_to_condense: List[CandleData]) -> List[CandleData]:
+        """ """
+        distinct_days = sorted({dt.time.date() for dt in candles_to_condense})
+
+        calculated_results = list()
+        for day in distinct_days:
+            candles_for_day = list()
+            for x in candles_to_condense:
+                if x.time.date() == day:
+                    candles_for_day.append(x)
+                if len(candles_for_day) == 24:
+                    break
+
+            high_close = max([x.close for x in candles_for_day])
+            high_open = max([x.open for x in candles_for_day])
+            high = max(high_close, high_open)
+
+            low_close = min([x.close for x in candles_for_day])
+            low_open = min([x.open for x in candles_for_day])
+            low = min(low_close, low_open)
+
+            min_hourly_candle = min([x.time for x in candles_for_day])
+            open_candle = self._get_candle(candle_list=candles_for_day, time=min_hourly_candle)
+
+            max_hourly_candle = max([x.time for x in candles_for_day])
+            close_candle = self._get_candle(candle_list=candles_for_day, time=max_hourly_candle)
+
+            volume_sum = round(sum([x.volume for x in candles_for_day]), 0)
+
+            calculated_results.append(
+                CandleData(
+                    time=open_candle.time,
+                    open=open_candle.open,
+                    high=high,
+                    low=low,
+                    close=close_candle.close,
+                    volume=volume_sum,
+                )
+            )
+        return calculated_results
 
     def populate_ath_metrics(self, token: TokenData):
         """_summary_
@@ -338,22 +342,6 @@ class TokenCharts:
             logger.error("Returning 160 as default")
             return 160.0
 
-    @staticmethod
-    def _get_candle_column(
-        candle_list: List[CandleData], time: datetime = None, time_unix: int = None, column: str = ""
-    ):
-        if time:
-            value_list = [x for x in candle_list if x.time == time]
-        else:
-            value_list = [x for x in candle_list if x.time_unix == time_unix]
-        if len(value_list) != 1:
-            return None
-
-        try:
-            return getattr(value_list[0], column)
-        except AttributeError:
-            return None
-
     def update_current_prices(self):
         """_summary_"""
         mints = [x.mint_address for x in self.token_list]
@@ -425,16 +413,20 @@ if __name__ == "__main__":
 
     load_dotenv()
     BIRDEYE_API_TOKEN = os.environ.get("BIRDEYE_API_TOKEN")
-
+    current_utc = datetime.now(timezone.utc)
+    threshold = current_utc - timedelta(days=20)
     S = TokenCharts(BIRDEYE_API_TOKEN=BIRDEYE_API_TOKEN)
-    S.verify_volume_authenticity()
-
-    # token_list = [
-    #     TokenData(name="GRIFFIN", symbol="GRIFFIN", mint_address="KENJSUYLASHUMfHyy5o4Hp2FdNqZg1AsUPhfH2kYvEP")
-    # ]
-    # S.set_token_list(token_list=token_list)
-    # S.populate_token_list()
-    # S._print_data()
+    token_list = [
+        TokenData(
+            name="GRIFFIN",
+            symbol="GRIFFIN",
+            mint_address="KENJSUYLASHUMfHyy5o4Hp2FdNqZg1AsUPhfH2kYvEP",
+            create_date=threshold,
+        )
+    ]
+    S.set_token_list(token_list=token_list)
+    S.populate_token_list()
+    S._print_data()
     # prices = S.get_quotes(
     #     mints=["Dz9mQ9NzkBcCsuGPFJ3r1bS4wgqKMHBPiVuniW8Mbonk", "DtR4D9FtVoTX2569gaL837ZgrB6wNjj6tkmnX9Rdk9B2"]
     # )

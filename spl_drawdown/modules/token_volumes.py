@@ -27,6 +27,7 @@ class TokenVolumes:
             "2qEHjDLDLbuBgRYvsxhc5D6uDWAivNFZGan56P1tpump",
             "J1toso1uCk3RLmjorhTtrVwY9HJ7X8V9yYac6Y7kGCPn",
             "27G8MtK7VtTcCHkpASjSDdkWWYfoqT6ggEuKidVJidD4",
+            "ArUyEVWGCzZMtAxcPmNH8nDFZ4kMjxrMbpsQf3NEpump",
         ]
         self.ignore_tokens_dict = {token: True for token in ignore_tokens_seed}
         self.last_run_date = None
@@ -133,7 +134,7 @@ class TokenVolumes:
         url = "https://public-api.birdeye.so/defi/token_creation_info"
 
         response = requests.get(url, headers=self.headers, params=params)
-        sleep(0.5)
+        sleep(0.2)
         # Check if the request was successful
         if response.status_code != 200:
             logger.error("Response failed : {e}".format(e=response.text))
@@ -329,15 +330,15 @@ if __name__ == "__main__":
     #     logger.info(x)
     # a.get_tokens()
     t = a.verify_ownership(
-         token=TokenData(name="", symbol="", mint_address="DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263")
-     )
+        token=TokenData(name="", symbol="", mint_address="DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263")
+    )
     print(t)
     t = a.verify_security(
-         token=TokenData(name="", symbol="", mint_address="DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263")
-     )
+        token=TokenData(name="", symbol="", mint_address="DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263")
+    )
     print(t)
     tt, t = a.verify_market(
-         token=TokenData(name="", symbol="", mint_address="DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263")
-     )
+        token=TokenData(name="", symbol="", mint_address="DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263")
+    )
     print(tt)
     print(t)
