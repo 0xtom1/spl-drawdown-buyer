@@ -64,7 +64,7 @@ class SplDrawdown:
         """
         if not tokens_to_buy or len(tokens_to_buy) == 0:
             return
-        logger.info("Buying Tokens")
+        logger.info("Tokens to Buy")
 
         holding_tokens = self.W.get_token_accounts()
         holding_tokens = [x.mint for x in holding_tokens]
@@ -88,6 +88,9 @@ class SplDrawdown:
             elif self.BET_AMOUNT_SOL + 2.0 > balance:
                 logger.error("Insufficient balance")
                 buy_amount = round(balance - 2.0, 2)
+            elif balance / 2.0 > self.BET_AMOUNT_SOL:
+                logger.error("Balance more than double")
+                buy_amount = round(balance / 2.0, 2)
             else:
                 buy_amount = self.BET_AMOUNT_SOL
             logger.info("Buying token {s}: {t}. Amount: {a}".format(s=token.symbol, t=token.name, a=buy_amount))
@@ -96,7 +99,7 @@ class SplDrawdown:
                 if is_successful:
                     self.bought_tokens[token.mint_address] = datetime.now(timezone.utc)
             except Exception as e:
-                logger.info("Error buying {e}".format(e=e))
+                logger.error("Error buying {e}".format(e=e))
                 continue
 
     def _prune_bought_tokens(self, minutes_til_stale: int = 90):

@@ -360,6 +360,13 @@ class TokenCharts:
             token.current_price_usd = quote_values["current_price_per_token_usd"]
             token.current_price_time = current_time
 
+        # Must be within 200 million of ATH or current price > 100m
+        self.token_list = [
+            x
+            for x in self.token_list
+            if x.current_price_usd is None or x.ath_price_usd - x.current_price_usd < 0.2 or x.current_price_usd >= 0.1
+        ]
+
     def get_quotes(self, mints: List[str]) -> dict:
         """_summary_
 
