@@ -51,7 +51,7 @@ class TokenCharts:
             self.populate_ath_metrics(token=token)
 
             if not token.ath_price_usd or token.ath_price_usd < 0.006:
-                logger.info("Token {s} ATH does not meet reqa: {l}".format(s=token.symbol, l=token.ath_price_usd))
+                logger.info("Token {s} ATH does not meet reqs: {l}".format(s=token.symbol, l=token.ath_price_usd))
                 continue
 
             self.populate_drawdown_metrics(token=token)
@@ -71,6 +71,9 @@ class TokenCharts:
             ):
                 token.candle_data = None
                 filtered_list.append(token)
+            elif token.drawdown_percent is None:
+                logger.info(token)
+                logger.info("Token {s} Drawdown is None".format(s=token.symbol))
             elif token.drawdown_percent < 0.7:
                 logger.info(token)
                 logger.info("Token {s} Drawdown % not met: {l}".format(s=token.symbol, l=token.drawdown_percent))

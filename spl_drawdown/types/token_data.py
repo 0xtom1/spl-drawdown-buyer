@@ -101,7 +101,6 @@ class TokenData:
 
         # Append each field to the parts list
         parts.append(f"  volume_usd: {volume_usd_str}")
-        parts.append(f"  market: {self.market or 'None'}")
         parts.append(f"  ath_price_usd: {ath_price_str}")
         parts.append(f"  current_price_usd: {current_price_usd}")
         parts.append(f"  current_price_time: {current_price_time}")
