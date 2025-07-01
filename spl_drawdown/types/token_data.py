@@ -50,7 +50,10 @@ class TokenData:
         current_price_usd = f"{self.current_price_usd:.8f}" if self.current_price_usd is not None else "None"
 
         # Summarize candle_data
-        candle_count = len(self.candle_data)
+        if self.candle_data is None:
+            candle_count = 0
+        else:
+            candle_count = len(self.candle_data)
 
         # Append each field to the parts list
         parts.append(f"  create_date: {create_date}")
@@ -67,6 +70,42 @@ class TokenData:
         parts.append(f"  current_price_usd: {current_price_usd}")
         parts.append(f"  current_price_time: {current_price_time}")
 
+        max_colon = max([text.find(":") for text in parts[1:]])
+
+        final_parts = ["\n--", parts[0]]
+        for each in parts[1:]:
+            colon_placement = each.find(":")
+            new_string = each[:colon_placement] + (" " * (max_colon - colon_placement)) + each[colon_placement:]
+            final_parts.append(new_string)
+        final_parts.append("--\n")
+        # Join all parts with newlines
+        return "\n".join(final_parts)
+
+    def __short_str__(self):
+        parts = []
+        parts.append(f"Symbol: {self.symbol} - Name: {self.name} - Address: {self.mint_address}")
+
+        # Format datetime fields or use 'None' if not set
+        current_price_time = (
+            self.current_price_time.strftime("%Y-%m-%d %H:%M:%S") if self.current_price_time else "None"
+        )
+
+        # Handle optional numeric fields with formatting
+        ath_price_str = f"{self.ath_price_usd:.8f}" if self.ath_price_usd is not None else "None"
+        volume_usd_str = f"{int(self.volume_usd):,}" if self.volume_usd is not None else "None"
+        current_price_usd = f"{self.current_price_usd:.8f}" if self.current_price_usd is not None else "None"
+        if self.current_price_usd is None or self.ath_price_time is None:
+            percent_away = 0
+        else:
+            percent_away = round(((self.ath_price_usd - self.current_price_usd) / self.ath_price_usd) * 100, 2)
+
+        # Append each field to the parts list
+        parts.append(f"  volume_usd: {volume_usd_str}")
+        parts.append(f"  market: {self.market or 'None'}")
+        parts.append(f"  ath_price_usd: {ath_price_str}")
+        parts.append(f"  current_price_usd: {current_price_usd}")
+        parts.append(f"  current_price_time: {current_price_time}")
+        parts.append(f"  percent_away: {percent_away:.2f}")
         max_colon = max([text.find(":") for text in parts[1:]])
 
         final_parts = ["\n--", parts[0]]

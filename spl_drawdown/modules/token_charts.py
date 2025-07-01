@@ -25,16 +25,33 @@ class TokenCharts:
 
     def populate_token_list(self):
         """Populates self.token_list: List[TokenData]"""
-        self.populate_candle_data()
-        logger.info("populate_candle_data done")
+        self.populate_token_list_interval(interval="D")
+        for each in self.token_list:
+            each.ath_price_time = None
+            each.ath_price_usd = None
+            each.drawdown_price_usd = None
+            each.drawdown_price_time = None
+            each.drawdown_percent = None
+            each.drawdown_consecutive_days_start = None
+            each.drawdown_percent = None
+            each.ath_price_usd = None
+            each.candle_data = None
 
+        self.populate_token_list_interval(interval="H")
+
+    def populate_token_list_interval(self, interval: str):
+        """Populates self.token_list: List[TokenData]"""
+        self.populate_candle_data(interval=interval)
+        logger.info("populate_candle_data done")
         for token in self.token_list:
             if len(token.candle_data) < 14:
+                logger.info("Token {s} candle len < 14: {l}".format(s=token.symbol, l=len(token.candle_data)))
                 continue
 
             self.populate_ath_metrics(token=token)
 
             if not token.ath_price_usd or token.ath_price_usd < 0.006:
+                logger.info("Token {s} ATH does not meet reqa: {l}".format(s=token.symbol, l=token.ath_price_usd))
                 continue
 
             self.populate_drawdown_metrics(token=token)
@@ -52,12 +69,18 @@ class TokenCharts:
                 and token.ath_price_usd >= 0.006
                 and len(token.candle_data) >= 14
             ):
-                token.candle_data = list()
+                token.candle_data = None
                 filtered_list.append(token)
+            elif token.drawdown_percent < 0.7:
+                logger.info(token)
+                logger.info("Token {s} Drawdown % not met: {l}".format(s=token.symbol, l=token.drawdown_percent))
+            elif token.drawdown_consecutive_days_start is None:
+                logger.info(token)
+                logger.info("Token {s} Drawdown consecutive days not met".format(s=token.symbol))
 
         self.set_token_list(token_list=filtered_list)
 
-    def populate_candle_data(self, candle_days: int = 365) -> List[TokenData]:
+    def populate_candle_data(self, candle_days: int = 365, interval="H") -> List[TokenData]:
         """_summary_
 
             NOTE: Timestamp for candle is the beginning of the time period
@@ -65,31 +88,50 @@ class TokenCharts:
             token (TokenData): _description_
             filter_days (int, optional): _description_. Defaults to 14.
         """
-        current_time = datetime.now(timezone.utc).replace(second=0, microsecond=0, minute=0)
+
         i = 0
         for token in self.token_list:
             i += 1
             logger.info(
                 "{a} of {b}: {x} {y}".format(a=i, b=len(self.token_list), x=token.symbol, y=token.mint_address)
             )
-            utc_from = max(
-                current_time - timedelta(days=candle_days),
-                token.create_date.replace(minute=0, second=0, microsecond=0),
-            )
-            logger.info("Create date: {t}".format(t=token.create_date))
-            logger.info("Start date: {t}".format(t=utc_from))
-            logger.info("End date: {t}".format(t=current_time))
-            candle_data_hourly = self.get_candle_data(
-                mint_address=token.mint_address, start_date=utc_from, end_date=current_time
-            )
 
-            if not self.verify_volume_authenticity(hourly_candles=candle_data_hourly[-24:]):
-                logger.info("Volume volatility not met for {x} {y}".format(x=token.symbol, y=token.mint_address))
-                continue
+            if interval == "H":
+                current_time = datetime.now(timezone.utc).replace(second=0, microsecond=0, minute=0)
 
-            calculated_results = self.condense_candles_to_days(candles_to_condense=candle_data_hourly)
+                utc_from = max(
+                    current_time - timedelta(days=candle_days),
+                    token.create_date.replace(minute=0, second=0, microsecond=0),
+                )
+                logger.info("H Create date: {t}".format(t=token.create_date))
+                logger.info("H Start date: {t}".format(t=utc_from))
+                logger.info("H End date: {t}".format(t=current_time))
 
-            token.candle_data = calculated_results
+                candle_data_response = self.get_candle_data_hourly(
+                    mint_address=token.mint_address, start_date=utc_from, end_date=current_time
+                )
+
+                if not self.verify_volume_authenticity(hourly_candles=candle_data_response[-24:]):
+                    logger.info("Volume volatility not met for {x} {y}".format(x=token.symbol, y=token.mint_address))
+                    continue
+
+                calculated_results = self.condense_candles_to_days(candles_to_condense=candle_data_response)
+
+                token.candle_data = calculated_results
+            elif interval == "D":
+                current_time = datetime.now(timezone.utc).replace(second=0, microsecond=0, minute=0, hour=0)
+                utc_from = max(
+                    current_time - timedelta(days=candle_days),
+                    token.create_date.replace(minute=0, second=0, microsecond=0, hour=0),
+                )
+                logger.info("D Create date: {t}".format(t=token.create_date))
+                logger.info("D Start date: {t}".format(t=utc_from))
+                logger.info("D End date: {t}".format(t=current_time))
+
+                candle_data_response = self.get_candle_data_daily(
+                    mint_address=token.mint_address, start_date=utc_from, end_date=current_time
+                )
+                token.candle_data = candle_data_response
 
     @staticmethod
     def _get_candle(candle_list: List[CandleData], time: datetime = None) -> CandleData:
@@ -106,7 +148,7 @@ class TokenCharts:
         retry=retry_if_exception_type((RequestException, HTTPError, SSLError)),  # Retry on RequestException
         reraise=True,  # Reraise the last exception after retries
     )
-    def get_candle_data(self, mint_address: str, start_date: datetime, end_date: datetime) -> List[CandleData]:
+    def get_candle_data_hourly(self, mint_address: str, start_date: datetime, end_date: datetime) -> List[CandleData]:
         """_summary_
 
         Args:
@@ -126,8 +168,6 @@ class TokenCharts:
             time_from = int(start_date.timestamp())
             time_to = int(temp_end_time.timestamp())
 
-            logger.info("Calling chart for {s}".format(s=mint_address))
-
             params = {
                 "address": mint_address,
                 "type": "1H",
@@ -137,7 +177,6 @@ class TokenCharts:
             }
             url = "https://public-api.birdeye.so/defi/v3/ohlcv"
             response = requests.get(url, headers=self.headers, params=params)
-            logger.info(f"Response Received. Params: {', '.join(f'{key}={value}' for key, value in params.items())}")
             sleep(0.2)
             # Check if the request was successful
             if response.status_code != 200:
@@ -164,6 +203,70 @@ class TokenCharts:
                     )
                 )
             start_date = temp_end_time + timedelta(hours=1)
+
+        return results
+
+    @retry(
+        stop=stop_after_attempt(3),  # Retry 3 times
+        wait=wait_fixed(2),  # Wait 2 seconds between retries
+        retry=retry_if_exception_type((RequestException, HTTPError, SSLError)),  # Retry on RequestException
+        reraise=True,  # Reraise the last exception after retries
+    )
+    def get_candle_data_daily(self, mint_address: str, start_date: datetime, end_date: datetime) -> List[CandleData]:
+        """_summary_
+
+        Args:
+            start_date (datetime): _description_
+            end_date (datetime): _description_
+            interval_minutes (int): _description_
+
+        Returns:
+            List[CandleData]: _description_
+        """
+
+        temp_end_time = start_date
+        results = []
+        while temp_end_time < end_date:
+            temp_end_time = min(start_date + timedelta(days=99), end_date)
+
+            time_from = int(start_date.timestamp())
+            time_to = int(temp_end_time.timestamp())
+
+            params = {
+                "address": mint_address,
+                "type": "1D",
+                "currency": "usd",
+                "time_from": time_from,
+                "time_to": time_to,
+            }
+            url = "https://public-api.birdeye.so/defi/v3/ohlcv"
+            response = requests.get(url, headers=self.headers, params=params)
+            sleep(0.2)
+            # Check if the request was successful
+            if response.status_code != 200:
+                logger.info("Response failed for {t}: {e}".format(t=mint_address, e=response.text))
+                return results
+
+            # Parse the JSON response
+            response_json = json.loads(response.text)
+
+            if "data" not in response_json or "items" not in response_json["data"]:
+                logger.info("No OCLHV data for {t}: {e}".format(t=mint_address, e=response_json))
+                return results
+
+            for each in response_json["data"]["items"]:
+                dt = datetime.fromtimestamp(each["unix_time"])
+                results.append(
+                    CandleData(
+                        time=dt,
+                        open=each["o"],
+                        high=each["h"],
+                        low=each["l"],
+                        close=each["c"],
+                        volume=each["v_usd"],
+                    )
+                )
+            start_date = temp_end_time + timedelta(days=1)
 
         return results
 
@@ -235,7 +338,7 @@ class TokenCharts:
         volumes = [x.volume for x in hourly_candles][:-1]
         co_eff = self.coefficient_of_variation(numbers=volumes)
         logger.info("Volume coefficiency of variation: {f}".format(f=round(co_eff, 6)))
-        if co_eff < 0.4:
+        if co_eff < 0.3:
             return False
         return True
 
@@ -360,13 +463,6 @@ class TokenCharts:
             token.current_price_usd = quote_values["current_price_per_token_usd"]
             token.current_price_time = current_time
 
-        # Must be within 200 million of ATH or current price > 100m
-        self.token_list = [
-            x
-            for x in self.token_list
-            if x.current_price_usd is None or x.ath_price_usd - x.current_price_usd < 0.2 or x.current_price_usd >= 0.1
-        ]
-
     def get_quotes(self, mints: List[str]) -> dict:
         """_summary_
 
@@ -407,9 +503,28 @@ class TokenCharts:
 
         return result_dict
 
+    def clean_token_list(self):
+        new_list = list()
+        for each in self.token_list:
+            if (
+                each.current_price_usd
+                and (each.ath_price_usd - each.current_price_usd > 0.2)
+                and each.current_price_usd < 0.1
+            ):
+                logger.info("Token removed, price too far from ATH: {s}".format(s=each.symbol))
+            else:
+                new_list.append(each)
+
+        self.set_token_list(token_list=new_list)
+
     def _print_data(self):
         for each in self.token_list:
             logger.info(each)
+        logger.info("Token Count: {f}".format(f=len(self.token_list)))
+
+    def _print_data_short(self):
+        for each in self.token_list:
+            logger.info(each.__short_str__())
         logger.info("Token Count: {f}".format(f=len(self.token_list)))
 
 
@@ -421,12 +536,12 @@ if __name__ == "__main__":
     load_dotenv()
     BIRDEYE_API_TOKEN = os.environ.get("BIRDEYE_API_TOKEN")
     current_utc = datetime.now(timezone.utc)
-    threshold = current_utc - timedelta(days=20)
+    threshold = current_utc - timedelta(days=220)
     S = TokenCharts(BIRDEYE_API_TOKEN=BIRDEYE_API_TOKEN)
     token_list = [
         TokenData(
-            name="GRIFFIN",
-            symbol="GRIFFIN",
+            name="NEET",
+            symbol="NEET",
             mint_address="KENJSUYLASHUMfHyy5o4Hp2FdNqZg1AsUPhfH2kYvEP",
             create_date=threshold,
         )

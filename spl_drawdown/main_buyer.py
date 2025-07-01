@@ -44,10 +44,12 @@ class SplDrawdown:
             logger.info("Len tokens = {t}".format(t=len(tokens_in_scope)))
             self.TokenCharter.set_token_list(token_list=tokens_in_scope)
             self.TokenCharter.populate_token_list()
+            self.TokenCharter.update_current_prices()
             self.TokenCharter._print_data()
+            self.TokenCharter.clean_token_list()
 
         self.TokenCharter.update_current_prices()
-        self.TokenCharter._print_data()
+        self.TokenCharter._print_data_short()
 
         tokens_to_buy = [
             x for x in self.TokenCharter.token_list if x.current_price_usd and x.current_price_usd > x.ath_price_usd
