@@ -479,7 +479,7 @@ class TokenCharts:
             return dict()
 
         comma_separated = ",".join(mints)
-        url = "https://public-api.birdeye.so/defi/multi_price?check_liquidity=100000&include_liquidity=false"
+        url = "https://public-api.birdeye.so/defi/multi_price?check_liquidity=40000&include_liquidity=false"
 
         payload = {"list_address": comma_separated}
 
@@ -499,10 +499,20 @@ class TokenCharts:
 
         result_dict = dict()
         for key in response_json["data"]:
-            result_dict[key] = {
-                "current_price_per_token_usd": response_json["data"][key]["value"],
-                "current_price_per_token_sol": response_json["data"][key]["priceInNative"],
-            }
+            if (
+                response_json["data"][key] is None
+                or "value" not in response_json["data"][key]
+                or "priceInNative" not in response_json["data"][key]
+            ):
+                result_dict[key] = {
+                    "current_price_per_token_usd": 0,
+                    "current_price_per_token_sol": 0,
+                }
+            else:
+                result_dict[key] = {
+                    "current_price_per_token_usd": response_json["data"][key]["value"],
+                    "current_price_per_token_sol": response_json["data"][key]["priceInNative"],
+                }
 
         return result_dict
 
@@ -515,6 +525,8 @@ class TokenCharts:
                 and each.current_price_usd < 0.1
             ):
                 logger.info("Token removed, price too far from ATH: {s}".format(s=each.symbol))
+            elif each.current_price_usd and each.current_price_usd < 0.001:
+                logger.info("Token removed, price too low: {s}".format(s=each.symbol))
             else:
                 new_list.append(each)
 
