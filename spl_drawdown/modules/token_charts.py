@@ -44,8 +44,8 @@ class TokenCharts:
         self.populate_candle_data(interval=interval)
         logger.info("populate_candle_data done")
         for token in self.token_list:
-            if len(token.candle_data) < 14:
-                logger.info("Token {s} candle len < 14: {l}".format(s=token.symbol, l=len(token.candle_data)))
+            if token.candle_data is None or len(token.candle_data) < 14:
+                logger.info("Token {s} candle len < 14:".format(s=token.symbol))
                 continue
 
             self.populate_ath_metrics(token=token)
@@ -67,6 +67,7 @@ class TokenCharts:
                 and token.drawdown_consecutive_days_start
                 and token.drawdown_percent >= 0.7
                 and token.ath_price_usd >= 0.006
+                and token.candle_data
                 and len(token.candle_data) >= 14
             ):
                 token.candle_data = None
