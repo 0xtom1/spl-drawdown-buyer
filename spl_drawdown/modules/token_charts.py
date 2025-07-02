@@ -450,11 +450,33 @@ class TokenCharts:
 
     def update_current_prices(self):
         """_summary_"""
-        mints = [x.mint_address for x in self.token_list]
-        quotes = self.get_quotes(mints=mints)
         current_time = datetime.now(timezone.utc)
 
+        quotes_to_get = list()
         for token in self.token_list:
+            if (
+                token.current_price_time is None
+                or token.current_price_usd is None
+                or token.current_per_from_ath is None
+            ):
+                quotes_to_get.append(token.mint_address)
+                continue
+            time_diff = current_time - token.current_price_time
+            if time_diff > timedelta(seconds=60) and token.current_per_from_ath <= 0.2:
+                quotes_to_get.append(token.mint_address)
+            elif time_diff > timedelta(seconds=120) and token.current_per_from_ath <= 0.3:
+                quotes_to_get.append(token.mint_address)
+            elif time_diff > timedelta(seconds=300) and token.current_per_from_ath <= 0.5:
+                quotes_to_get.append(token.mint_address)
+            elif time_diff > timedelta(seconds=600):
+                quotes_to_get.append(token.mint_address)
+
+        logger.info("Getting {x} quotes".format(x=len(quotes_to_get)))
+        quotes = self.get_quotes(mints=quotes_to_get)
+
+        for token in self.token_list:
+            if token.mint_address not in quotes_to_get:
+                continue
             # Update time held
             quote_values = quotes.get(token.mint_address)
             if quote_values is None:
@@ -465,6 +487,10 @@ class TokenCharts:
 
             token.current_price_usd = quote_values["current_price_per_token_usd"]
             token.current_price_time = current_time
+            if token.ath_price_usd and token.current_price_usd and token.ath_price_usd != 0:
+                token.current_per_from_ath = (token.ath_price_usd - token.current_price_usd) / token.ath_price_usd
+            else:
+                token.current_per_from_ath = 1.0
 
     def get_quotes(self, mints: List[str]) -> dict:
         """_summary_
@@ -538,8 +564,16 @@ class TokenCharts:
         logger.info("Token Count: {f}".format(f=len(self.token_list)))
 
     def _print_data_short(self):
+        current_time = datetime.now(timezone.utc)
         for each in self.token_list:
-            logger.info(each.__short_str__())
+            if each.current_price_time is None or each.current_price_usd is None or each.current_per_from_ath is None:
+                logger.info(each.__short_str__())
+                continue
+
+            time_diff = current_time - each.current_price_time
+            if time_diff < timedelta(seconds=60):
+                logger.info(each.__short_str__())
+
         logger.info("Token Count: {f}".format(f=len(self.token_list)))
 
 

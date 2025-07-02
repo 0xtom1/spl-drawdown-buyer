@@ -24,6 +24,7 @@ class TokenData:
     candle_data: List[CandleData] = field(default_factory=list)
     current_price_usd: Optional[float] = None
     current_price_time: Optional[datetime] = None
+    current_per_from_ath: Optional[float] = None
 
     def __str__(self):
         parts = []
@@ -94,17 +95,14 @@ class TokenData:
         ath_price_str = f"{self.ath_price_usd:.8f}" if self.ath_price_usd is not None else "None"
         volume_usd_str = f"{int(self.volume_usd):,}" if self.volume_usd is not None else "None"
         current_price_usd = f"{self.current_price_usd:.8f}" if self.current_price_usd is not None else "None"
-        if self.current_price_usd is None or self.ath_price_time is None:
-            percent_away = 0
-        else:
-            percent_away = round(((self.ath_price_usd - self.current_price_usd) / self.ath_price_usd) * 100, 2)
+        current_per_from_ath = f"{self.current_per_from_ath:.4f}" if self.current_per_from_ath is not None else "None"
 
         # Append each field to the parts list
         parts.append(f"  volume_usd: {volume_usd_str}")
         parts.append(f"  ath_price_usd: {ath_price_str}")
         parts.append(f"  current_price_usd: {current_price_usd}")
         parts.append(f"  current_price_time: {current_price_time}")
-        parts.append(f"  percent_away: {percent_away:.2f}")
+        parts.append(f"  current_per_from_ath: {current_per_from_ath}")
         max_colon = max([text.find(":") for text in parts[1:]])
 
         final_parts = ["\n--", parts[0]]
