@@ -19,9 +19,29 @@ class TokenCharts:
     def __init__(self, BIRDEYE_API_TOKEN: str):
         self.BIRDEYE_API_TOKEN = BIRDEYE_API_TOKEN
         self.headers = {"accept": "application/json", "x-chain": "solana", "X-API-KEY": self.BIRDEYE_API_TOKEN}
+        self.token_list = list()
 
-    def set_token_list(self, token_list: List[TokenData] = None):
-        self.token_list = token_list
+    @property
+    def token_list(self) -> List[TokenData]:
+        return self._token_list
+
+    @token_list.setter
+    def token_list(self, value: List[TokenData]):
+        self._token_list = value
+
+    def remove_from_token_list(self, mints_to_remove: List[str]):
+        """_summary_
+
+        Args:
+            mints_to_remove (List[str]): _description_
+        """
+        filtered_list = list()
+        for each in self.token_list:
+            if each.mint_address not in mints_to_remove:
+                filtered_list.append(each)
+            else:
+                logger.info("Removing {s} {a}".format(s=each.symbol, a=each.mint_address))
+        self.token_list = filtered_list
 
     def populate_token_list(self):
         """Populates self.token_list: List[TokenData]"""
@@ -82,7 +102,7 @@ class TokenCharts:
                 logger.info(token)
                 logger.info("Token {s} Drawdown consecutive days not met".format(s=token.symbol))
 
-        self.set_token_list(token_list=filtered_list)
+        self.token_list = filtered_list
 
     def populate_candle_data(self, candle_days: int = 365, interval="H") -> List[TokenData]:
         """_summary_
@@ -557,7 +577,7 @@ class TokenCharts:
             else:
                 new_list.append(each)
 
-        self.set_token_list(token_list=new_list)
+        self.token_list = new_list
 
     def _print_data(self):
         for each in self.token_list:
@@ -596,7 +616,7 @@ if __name__ == "__main__":
             create_date=threshold,
         )
     ]
-    S.set_token_list(token_list=token_list)
+    S.token_list = token_list
     S.populate_token_list()
     S._print_data()
     # prices = S.get_quotes(

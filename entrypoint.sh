@@ -11,7 +11,7 @@ case "$MODE" in
     ;;
   "SELLER")
     echo "Running SELLER..."
-    python /app/spl_drawdown/main_seller.py
+    python /app/spl_drawdown/main_buyer.py
     ;;
   *)
     echo "Error: MODE environment variable must be 'BUYER' or 'SELLER', got '$MODE'"

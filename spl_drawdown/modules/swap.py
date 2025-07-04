@@ -1,9 +1,7 @@
 import base64
-import os
 from time import sleep
 
 import requests
-from dotenv import load_dotenv
 from solana.rpc.api import Client
 from solders.keypair import Keypair
 from solders.transaction import VersionedTransaction
@@ -15,10 +13,9 @@ logger = get_logger()
 
 
 class Swapper:
-    def __init__(self, WALLET_PRIVATE_KEY: str, HELIUS_API_KEY: str):
+    def __init__(self, HELIUS_API_KEY: str):
         # Configuration
         self.RPC_ENDPOINT = f"https://mainnet.helius-rpc.com/?api-key={HELIUS_API_KEY}"
-        self.WALLET_PRIVATE_KEY = WALLET_PRIVATE_KEY
         self.sol_mint = "So11111111111111111111111111111111111111112"  # SOL
 
         self.COMMITMENT = "confirmed"  # Commitment level for RPC calls
@@ -26,27 +23,18 @@ class Swapper:
         # Initialize Solana client
         try:
             self.client = Client(self.RPC_ENDPOINT, commitment=self.COMMITMENT)
-            # version = self.client.get_version()
-            # logger.info(f"Connected to Helius RPC, version: {version}")
         except Exception as e:
             raise Exception(f"Failed to connect to Helius RPC: {e}")
 
-        # Validate and initialize wallet
-        try:
-            self.wallet = Keypair.from_base58_string(WALLET_PRIVATE_KEY)
-            logger.info(f"Wallet public key: {self.wallet.pubkey()}")
-        except ValueError as e:
-            raise ValueError(f"Invalid private key: {e}")
-
     @retry(stop=stop_after_attempt(5), wait=wait_exponential(multiplier=1, min=1, max=10))
-    def get_balance_with_retry(self):
+    def get_balance_with_retry(self, pubkey):
         """Fetch wallet balance with retry logic."""
         try:
-            return self.client.get_balance(self.wallet.pubkey(), commitment=self.COMMITMENT).value
+            return self.client.get_balance(pubkey, commitment=self.COMMITMENT).value
         except Exception as e:
             raise Exception(f"RPC error during balance check: {e}")
 
-    def place_buy_order(self, OUTPUT_MINT: str, AMOUNT_IN_SOL: float):
+    def place_buy_order(self, OUTPUT_MINT: str, AMOUNT_IN_SOL: float, KEY_PAIR: Keypair):
         """Place a buy order for 0.01 SOL worth of the target token."""
         LAMPORTS_PER_SOL = 1_000_000_000
         AMOUNT = int(AMOUNT_IN_SOL * LAMPORTS_PER_SOL)
@@ -55,13 +43,14 @@ class Swapper:
 
         try:
             logger.info("----Start Buy----")
+            logger.info(KEY_PAIR.pubkey())
             for buy_amount in chunk_amounts:
                 logger.info("Buying {x} SOL of {t}".format(x=buy_amount / LAMPORTS_PER_SOL, t=OUTPUT_MINT))
                 # Get quote
                 quote = self.get_quote(input_mint=self.sol_mint, output_mint=OUTPUT_MINT, amount=buy_amount)
 
                 # Execute swap
-                txid = self.execute_swap(quote=quote, user_public_key=str(self.wallet.pubkey()))
+                txid = self.execute_swap(quote=quote, key_pair=KEY_PAIR)
                 logger.info(f"Buy order successful: https://solscan.io/tx/{txid}")
                 sleep(2)
             logger.info("----End Buy----")
@@ -69,34 +58,6 @@ class Swapper:
 
         except Exception as e:
             logger.error(f"Error in place_buy_order: {e}")
-            return False
-
-    def place_sell_order(self, INPUT_MINT: str, AMOUNT: int):
-        """Place a sell order for AMOUNT of INPUT_MINT"""
-        try:
-            logger.info("----Start Sell----")
-            # Get quote
-            quote = self.get_quote(input_mint=INPUT_MINT, output_mint=self.sol_mint, amount=AMOUNT)
-            output_sol = float(quote["outAmount"]) / (10**9)
-
-            full_chunk = int((self.MAX_SOL_CHUNK / output_sol) * AMOUNT)
-            chunk_amounts = self.get_chunk_amounts(total_amount=AMOUNT, chunk_amount=full_chunk)
-
-            for sell_amount in chunk_amounts:
-                logger.info("Selling {x} of {t}".format(x=AMOUNT, t=INPUT_MINT))
-                if len(chunk_amounts) > 1:
-                    sleep(2)
-                    quote = self.get_quote(input_mint=INPUT_MINT, output_mint=self.sol_mint, amount=sell_amount)
-
-                # Execute swap
-                txid = self.execute_swap(quote=quote, user_public_key=str(self.wallet.pubkey()))
-                logger.info(f"Sell order successful: https://solscan.io/tx/{txid}")
-
-            logger.info("----End Sell----")
-            return True
-
-        except Exception as e:
-            logger.error(f"Error in place_sell_order: {e}")
             return False
 
     def get_chunk_amounts(self, total_amount: int, chunk_amount: int):
@@ -166,11 +127,11 @@ class Swapper:
             raise Exception(f"Failed to create swap: {e}")
 
     @retry(stop=stop_after_attempt(5), wait=wait_exponential(multiplier=1, min=1, max=10))
-    def execute_swap(self, quote: dict, user_public_key: str) -> str:
+    def execute_swap(self, quote: dict, key_pair: Keypair) -> str:
         """Sign and send the swap transaction with priority fee."""
         try:
             # Create swap transaction
-            swap_transaction = self.create_swap(quote=quote, user_public_key=user_public_key)
+            swap_transaction = self.create_swap(quote=quote, user_public_key=str(key_pair.pubkey()))
 
             # Decode the base64 transaction
             transaction_bytes = base64.b64decode(swap_transaction)
@@ -181,7 +142,7 @@ class Swapper:
             logger.info(f"Deserialized transaction instructions: {len(unsigned_tx.message.instructions)}")
 
             # Create and sign the transaction
-            signed_tx = VersionedTransaction(unsigned_tx.message, [self.wallet])
+            signed_tx = VersionedTransaction(unsigned_tx.message, [key_pair])
             logger.info(f"Final transaction instructions: {len(signed_tx.message.instructions)}")
 
             # Send the transaction
@@ -198,14 +159,4 @@ class Swapper:
 
 
 if __name__ == "__main__":
-    load_dotenv()
-    SOLANA_PRIVATE_KEY = os.environ.get("SOLANA_PRIVATE_KEY")
-    if not SOLANA_PRIVATE_KEY:
-        raise ValueError("SOLANA_PRIVATE_KEY not found in environment variables")
-    HELIUS_API_KEY = os.environ.get("HELIUS_API_KEY")
-    if not HELIUS_API_KEY:
-        raise ValueError("HELIUS_API_KEY not found in environment variables")
-
-    S = Swapper(WALLET_PRIVATE_KEY=SOLANA_PRIVATE_KEY, HELIUS_API_KEY=HELIUS_API_KEY)
-    # a = S.place_buy_order(OUTPUT_MINT="Dz9mQ9NzkBcCsuGPFJ3r1bS4wgqKMHBPiVuniW8Mbonk", AMOUNT_IN_SOL=0.1)
-    # S.place_sell_order(INPUT_MINT="Dz9mQ9NzkBcCsuGPFJ3r1bS4wgqKMHBPiVuniW8Mbonk", AMOUNT=110319682)
+    pass
