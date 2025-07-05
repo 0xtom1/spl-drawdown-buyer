@@ -4,6 +4,7 @@ from time import sleep
 from typing import List, Tuple
 
 import requests
+from heliuspy import HeliusAPI
 from requests.exceptions import HTTPError, RequestException, SSLError
 from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_fixed
 
@@ -14,8 +15,10 @@ logger = get_logger()
 
 
 class TokenVolumes:
-    def __init__(self, BIRDEYE_API_TOKEN: str):
+    def __init__(self, BIRDEYE_API_TOKEN: str, HELIUS_API_KEY: str):
         self.BIRDEYE_API_TOKEN = BIRDEYE_API_TOKEN
+        self.Helius = HeliusAPI(api_key=HELIUS_API_KEY)
+
         self.headers = {"accept": "application/json", "x-chain": "solana", "X-API-KEY": self.BIRDEYE_API_TOKEN}
         ignore_tokens_seed = [
             "So11111111111111111111111111111111111111112",
@@ -92,8 +95,13 @@ class TokenVolumes:
             i += 1
             if i % 100 == 0:
                 logger.info("{a} of {b}".format(a=i, b=len(results)))
+
+            if not self.verify_update_authority(token=token):
+                continue
+
             if not self.verify_ownership(token=token):
                 continue
+
             logger.info(
                 "{i} of {l} Checking {t}: {s} {a}".format(
                     i=i, l=len(results), t=token.symbol, s=token.name, a=token.mint_address
@@ -112,6 +120,63 @@ class TokenVolumes:
         logger.info("Tokens returned: {t}".format(t=[x.symbol for x in filtered_list]))
 
         return filtered_list
+
+    @retry(
+        stop=stop_after_attempt(3),  # Retry 3 times
+        wait=wait_fixed(2),  # Wait 2 seconds between retries
+        retry=retry_if_exception_type((RequestException, HTTPError, SSLError)),  # Retry on RequestException
+        reraise=True,  # Reraise the last exception after retries
+    )
+    def verify_update_authority(self, token: TokenData) -> bool:
+        """Verify basic details such as ownership and create date
+
+        ***this will not fail if no data is returned***
+
+        Args:
+            token (TokenData): _description_
+
+        Returns:
+            bool: _description_
+        """
+        try:
+            response = self.Helius.get_asset(id=token.mint_address)
+        except Exception as e:
+            logger.info("Error getting token accounts: {e}".format(e=e))
+            raise
+
+        expected_keys = sorted(["jsonrpc", "result", "id"])
+        response_keys = sorted(response.keys())
+
+        if expected_keys != response_keys:
+            return True
+
+        results = response.get("result")
+        if results is None:
+            return True
+
+        authorities = results.get("authorities")
+        if authorities and len(authorities) != 1:
+            logger.info("Len update authority > 1 {b} {a}".format(b=token.mint_address, a=authorities))
+            return False
+
+        update_authority = authorities[0].get("address")
+        scope_authority = authorities[0].get("scopes")
+        if update_authority is None or scope_authority is None:
+            return True
+
+        if (
+            update_authority
+            and update_authority
+            in (
+                "TSLvdd1pWpHVjahSpsvCXUbgwsL3JAcvokwaKt1eokM",
+                "WLHv2UAZm6z4KyaaELi5pjdbJh6RESMva1Rnn8pJVVh",
+            )
+            and scope_authority
+            and "full" in scope_authority
+        ):
+            return True
+        else:
+            return False
 
     @retry(
         stop=stop_after_attempt(3),  # Retry 3 times
@@ -316,29 +381,28 @@ class TokenVolumes:
 
 
 if __name__ == "__main__":
-    import os
 
-    from dotenv import load_dotenv
+    from spl_drawdown.utils.settings import settings_key_values
 
-    load_dotenv()
-
-    api_key = os.environ.get("BIRDEYE_API_TOKEN")
-    a = TokenVolumes(BIRDEYE_API_TOKEN=api_key)
-    # tokens = a.get_tokens()
+    a = TokenVolumes(
+        BIRDEYE_API_TOKEN=settings_key_values["BIRDEYE_API_TOKEN"],
+        HELIUS_API_KEY=settings_key_values["HELIUS_API_KEY"],
+    )
+    tokens = a.get_tokens()
 
     # for x in tokens:
     #     logger.info(x)
     # a.get_tokens()
-    t = a.verify_ownership(
-        token=TokenData(name="", symbol="", mint_address="DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263")
+    t = a.verify_update_authority(
+        token=TokenData(name="", symbol="", mint_address="7vfCXTUXx5WJV5JADk17DUJ4ksgau7utNKj4b963voxs")
     )
     print(t)
-    t = a.verify_security(
-        token=TokenData(name="", symbol="", mint_address="DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263")
-    )
-    print(t)
-    tt, t = a.verify_market(
-        token=TokenData(name="", symbol="", mint_address="DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263")
-    )
-    print(tt)
-    print(t)
+    # t = a.verify_security(
+    #     token=TokenData(name="", symbol="", mint_address="DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263")
+    # )
+    # print(t)
+    # tt, t = a.verify_market(
+    #     token=TokenData(name="", symbol="", mint_address="DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263")
+    # )
+    # print(tt)
+    # print(t)

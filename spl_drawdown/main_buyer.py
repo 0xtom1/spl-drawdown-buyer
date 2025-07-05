@@ -35,7 +35,7 @@ class SplDrawdown:
         for w in self.wallets:
             self.bought_tokens[w.public_key] = dict()
 
-        self.TokenVols = TokenVolumes(BIRDEYE_API_TOKEN=self.BIRDEYE_API_TOKEN)
+        self.TokenVols = TokenVolumes(BIRDEYE_API_TOKEN=self.BIRDEYE_API_TOKEN, HELIUS_API_KEY=self.HELIUS_API_KEY)
         self.W = Wallet(
             HELIUS_API_KEY=self.HELIUS_API_KEY,
             BIRDEYE_API_TOKEN=self.BIRDEYE_API_TOKEN,
@@ -102,9 +102,9 @@ class SplDrawdown:
                 elif self.BET_AMOUNT_SOL + 2.0 > balance:
                     logger.error("Insufficient balance")
                     buy_amount = round(balance - 2.0, 2)
-                elif balance / 2.0 > self.BET_AMOUNT_SOL:
-                    logger.error("Balance more than double")
-                    buy_amount = round(balance / 2.0, 2)
+                elif balance / 4.0 > self.BET_AMOUNT_SOL:
+                    logger.error("Balance more than quadruple")
+                    buy_amount = round(balance / 4.0, 2)
                 else:
                     buy_amount = self.BET_AMOUNT_SOL
                 logger.info("Buying token {s}: {t}. Amount: {a}".format(s=token.symbol, t=token.name, a=buy_amount))
