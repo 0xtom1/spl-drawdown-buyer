@@ -39,6 +39,7 @@ jobs:
           --set-env-vars HELIUS_API_KEY=${{ secrets.HELIUS_API_KEY }} \
           --set-env-vars BIRDEYE_API_TOKEN=${{ secrets.BIRDEYE_API_TOKEN }} \
           --set-env-vars SOLANA_PRIVATE_KEY1=${{ secrets.SOLANA_PRIVATE_KEY1 }} \
+          --set-env-vars SOLANA_PRIVATE_KEY2=${{ secrets.SOLANA_PRIVATE_KEY2 }} \
           --set-env-vars BET_AMOUNT_SOL=3.0 \
           --set-env-vars MIN_24HR_VOLUME=500000.0 \
           --set-env-vars MODE=BUYER
