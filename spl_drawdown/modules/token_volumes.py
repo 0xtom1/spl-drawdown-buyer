@@ -159,6 +159,9 @@ class TokenVolumes:
             logger.info("Len update authority > 1 {b} {a}".format(b=token.mint_address, a=authorities))
             return False
 
+        if not authorities:
+            return True
+
         update_authority = authorities[0].get("address")
         scope_authority = authorities[0].get("scopes")
         if update_authority is None or scope_authority is None:
