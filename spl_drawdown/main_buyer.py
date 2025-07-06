@@ -33,6 +33,7 @@ class SplDrawdown:
         self.TokenCharter = TokenCharts(BIRDEYE_API_TOKEN=self.BIRDEYE_API_TOKEN)
         self.bought_tokens = dict()
 
+        # test wallet balances
         S = Swapper(HELIUS_API_KEY=self.HELIUS_API_KEY)
         for w in self.wallets:
             self.bought_tokens[w.public_key] = dict()
